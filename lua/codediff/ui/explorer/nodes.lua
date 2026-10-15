@@ -353,7 +353,7 @@ local function selected_background(is_selected)
 end
 
 -- Prepare node for rendering (format display)
-function M.prepare_node(node, max_width, selected_path, selected_group)
+function M.prepare_node(node, max_width, selected_path, selected_group, ai_loading)
   local data = node.data or {}
   local explorer_config = config.options.explorer
   -- Formatters are pluggable per node type; nil in config means "use the
@@ -370,7 +370,9 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
 
   local is_selected = data.path == selected_path and data.group == selected_group
   local fmt = user_formatters.file or default_formatters.file
-  return line_layout.render(fmt(file_context(node, data, explorer_config)), max_width, selected_background(is_selected), explorer_config.ellipsis)
+  local ctx = file_context(node, data, explorer_config)
+  ctx.ai_loading = is_selected and ai_loading or nil
+  return line_layout.render(fmt(ctx), max_width, selected_background(is_selected), explorer_config.ellipsis)
 end
 
 return M

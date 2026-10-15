@@ -86,6 +86,30 @@ describe("conflict block gutter on the screen grid", function()
     }, "hidden BOF", panes.foreground)
   end)
 
+  it("keeps BOF and after-line-one markers distinct during natural redraws", function()
+    screen = Screen.new(120, 24)
+    local panes = gutter.open_block(screen, 13)
+    for _, state in ipairs({
+      { fill = 0, rows = { "│ one", "│ ╱╱╱╱", "╰─two", "  three" } },
+      { fill = 2, rows = { "╭─╱╱╱╱", "│ ╱╱╱╱", "│ one", "│ ╱╱╱╱", "╰─two" } },
+      { fill = 1, rows = { "│ ╱╱╱╱", "│ one", "│ ╱╱╱╱", "╰─two" } },
+    }) do
+      local previous = screen.flushes
+      screen:exec(
+        [[
+        local win, fill = ...
+        vim.api.nvim_set_current_win(win)
+        vim.fn.winrestview({ topline = 1, topfill = fill })
+      ]],
+        { panes.original, state.fill }
+      )
+      screen:await(function()
+        return screen.flushes > previous
+      end, "scroll did not redraw the gutter")
+      gutter.expect_pane(screen, panes.original, state.rows, "natural BOF redraw", panes.foreground)
+    end
+  end)
+
   for _, options in ipairs({
     { name = "number and fold columns", number = true, relativenumber = true, numberwidth = 6, foldcolumn = "2", signcolumn = "yes" },
     { name = "multiple sign slots", number = true, relativenumber = false, numberwidth = 4, foldcolumn = "0", signcolumn = "yes:2" },

@@ -34,3 +34,20 @@ end, {
   end,
   desc = "Live code review workspace for Neovim",
 })
+
+vim.api.nvim_create_user_command("CodeDiffAI", function(opts)
+  local action = opts.args == "" and "toggle" or opts.args
+  if not vim.tbl_contains({ "toggle", "login", "status", "refresh", "cancel" }, action) then
+    vim.notify("Usage: :CodeDiffAI [toggle|login|status|refresh|cancel]", vim.log.levels.ERROR)
+    return
+  end
+  require("codediff.ai").command(action)
+end, {
+  nargs = "?",
+  complete = function(lead)
+    return vim.tbl_filter(function(action)
+      return action:sub(1, #lead) == lead
+    end, { "toggle", "login", "status", "refresh", "cancel" })
+  end,
+  desc = "ChatGPT sign-in and AI change summaries",
+})

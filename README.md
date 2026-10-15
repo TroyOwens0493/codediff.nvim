@@ -627,6 +627,57 @@ git difftool main feature-branch
 
 ### Extend CodeDiff
 
+#### AI change summaries (this fork)
+
+Install the [Codex CLI](https://learn.chatgpt.com/docs/cli) and enable summaries:
+
+```lua
+require("codediff").setup({
+  ai = {
+    enabled = true,
+    auto_summary = true,
+    keymap = "gs", -- Set false to supply your own mapping
+    detail = "detailed", -- Two or three sentences; "brief" uses one
+    popup = { border = "rounded", max_width = 72 },
+  },
+})
+```
+
+Run `:CodeDiffAI login` to sign in with ChatGPT, or use your existing Codex
+ChatGPT login. CodeDiff uses a local `codex app-server` process; Codex stores
+and refreshes the credentials. Summaries use your ChatGPT plan's Codex allowance.
+
+When you select a file, CodeDiff sends its changed blocks and nearby code to
+Codex in the background. A spinner and `AI` appear beside the selected file in
+the Explorer while the request runs. The indicator disappears when the request
+finishes, fails, or is cancelled. Set `ai.loading_indicator = false` to hide it.
+Custom file formatters receive the indicator text in `ctx.ai_loading`.
+Move onto a changed block and press `gs` to show its
+summary. Press `gs` again, move the cursor, or leave the buffer to close it.
+Generation never opens a popup. The mapping applies to diff panes only; the
+Explorer's existing `gs` mapping still toggles staged files.
+
+Use `:CodeDiffAI status` to check sign-in and summary state, `:CodeDiffAI refresh`
+to retry or bypass the cache, and `:CodeDiffAI cancel` to stop the current request.
+The same comparison is cached in memory. Edits invalidate old results. Merge
+conflict views are not supported by this MVP. Files whose input exceeds
+`ai.max_input_bytes` (120,000 by default) are skipped with a message on request.
+
+Public Lua functions support custom mappings and statuslines:
+
+```lua
+vim.keymap.set("n", "<leader>ga", require("codediff").toggle_summary)
+require("codediff").summarize({ force = true })
+require("codediff").ai_login()
+local state = require("codediff").ai_status() -- { status, count, error? }
+```
+
+Set `ai.auto_summary = false` to generate only through `summarize()` or
+`:CodeDiffAI refresh`. `ai.command` accepts an executable name or an argv list.
+`ai.model` defaults to your configured Codex model. `ai.effort` defaults to
+`"low"`. Requests use an ephemeral, read-only thread with shell, MCP servers,
+plugins, and delegation disabled.
+
 #### Lua API
 
 `require("codediff")` exposes the supported Lua API:

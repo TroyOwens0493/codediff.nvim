@@ -2,6 +2,24 @@
 local M = {}
 
 M.defaults = {
+  -- AI summaries use the locally installed Codex CLI and its ChatGPT login.
+  ai = {
+    enabled = false,
+    auto_summary = true, -- Generate for the selected file; never open a popup automatically
+    loading_indicator = true, -- Spinner beside the selected explorer file while generating
+    keymap = "gs", -- Diff panes only; false disables the default mapping
+    command = "codex", -- Executable or argv list
+    model = nil, -- Use the user's configured Codex model
+    effort = "low",
+    detail = "detailed", -- "brief" (one sentence) or "detailed" (two or three)
+    context_lines = 6,
+    max_input_bytes = 120000,
+    debounce_ms = 350,
+    request_timeout_ms = 30000,
+    timeout_ms = 120000,
+    cache_size = 32, -- In-memory file comparisons; cleared when Neovim exits
+    popup = { border = "rounded", max_width = 72 },
+  },
   -- Highlight configuration
   highlights = {
     -- Line-level highlights: accepts highlight group names (e.g., "DiffAdd") or color values (e.g., "#2ea043")

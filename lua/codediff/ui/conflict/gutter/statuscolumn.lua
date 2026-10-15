@@ -48,8 +48,12 @@ function M.render()
   end
   local state = states[win]
   if state and state.bufnr == vim.api.nvim_win_get_buf(win) and vim.v.virtnum < 0 and vim.wo[win].signcolumn ~= "no" then
-    local line_markers = state.markers[vim.v.lnum]
-    local marker = line_markers and line_markers[-vim.v.virtnum]
+    -- Virtual rows count upward from -count to -1. BOF rows and rows below
+    -- line one both report lnum=1, so use the drawing line to distinguish them.
+    local anchor = vim.v.lnum == 1 and state.drawing_line == 1 and 0 or vim.v.lnum
+    local offset = (state.filler_counts[anchor] or 0) + vim.v.virtnum + 1
+    local line_markers = state.markers[anchor]
+    local marker = line_markers and line_markers[offset]
     if marker then
       return render_marker(win, marker)
     end
@@ -72,7 +76,7 @@ function M.attach(win)
   local bufnr = vim.api.nvim_win_get_buf(win)
   local state = states[win]
   if not state or state.bufnr ~= bufnr then
-    states[win] = { bufnr = bufnr, markers = {} }
+    states[win] = { bufnr = bufnr, markers = {}, filler_counts = {} }
   end
   if current ~= expression then
     vim.wo[win].statuscolumn = expression
@@ -80,7 +84,7 @@ function M.attach(win)
   return true
 end
 
---- Index precomputed markers by Neovim's statuscolumn coordinates.
+--- Index precomputed markers by filler anchor and visual offset.
 function M.update(win, projections, filler_counts)
   local state = states[win]
   if not state or not vim.api.nvim_win_is_valid(win) or state.bufnr ~= vim.api.nvim_win_get_buf(win) or vim.wo[win].statuscolumn ~= expression then
@@ -89,22 +93,18 @@ function M.update(win, projections, filler_counts)
   end
 
   local markers = {}
-  local bof_count = filler_counts and filler_counts[0] or 0
   for _, projection in ipairs(projections or {}) do
     for line, offsets in pairs(projection.markers) do
       for offset, text in pairs(offsets) do
         if offset > 0 then
-          -- BOF fillers and fillers after line one share v:lnum=1; Neovim
-          -- numbers them consecutively, including off-screen BOF fillers.
-          local lnum = math.max(1, line)
-          local virtnum = offset + (line == 1 and bof_count or 0)
-          markers[lnum] = markers[lnum] or {}
-          markers[lnum][virtnum] = { text = text, highlight = projection.highlight }
+          markers[line] = markers[line] or {}
+          markers[line][offset] = { text = text, highlight = projection.highlight }
         end
       end
     end
   end
   state.markers = markers
+  state.filler_counts = filler_counts or {}
   return true
 end
 
@@ -121,6 +121,21 @@ function M.detach(win)
 end
 
 if vim.fn.exists("+statuscolumn") == 1 then
+  vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("CodeDiffConflictGutterDraw"), {
+    on_win = function(_, win, _, topline)
+      local state = states[win]
+      if not state then
+        return false
+      end
+      state.drawing_line = topline + 1
+    end,
+    on_line = function(_, win, _, row)
+      local state = states[win]
+      if state then
+        state.drawing_line = row + 1
+      end
+    end,
+  })
   local group = vim.api.nvim_create_augroup("CodeDiffConflictGutterWindows", { clear = true })
   vim.api.nvim_create_autocmd("WinClosed", {
     group = group,

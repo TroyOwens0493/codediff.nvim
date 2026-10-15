@@ -120,6 +120,9 @@ function Controller:publish(data, redraw)
   self.blocked = nil
   data.result = session.result_bufnr and inputs.lines(session.result_bufnr) or nil
   self.last = data
+  if package.loaded["codediff.ai"] then
+    require("codediff.ai").on_diff_updated(session.tabpage)
+  end
 end
 
 function Controller:run()
@@ -369,6 +372,9 @@ function M.is_current(tabpage, session, generation)
 end
 
 function M.ready(tabpage)
+  if package.loaded["codediff.ai"] then
+    require("codediff.ai").on_diff_updated(tabpage)
+  end
   local session = session_for(tabpage)
   local self = session and session.refresh
   if not self or self.closed then

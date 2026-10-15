@@ -23,6 +23,9 @@ return function(ctx)
   end
 
   local right = {}
+  if ctx.ai_loading then
+    right[#right + 1] = { segments = { { text = ctx.ai_loading .. " ", hl = "DiagnosticInfo" } } }
+  end
   local file_stats = stats.file_segments(ctx.stats)
   if #file_stats > 0 then
     file_stats[#file_stats + 1] = { text = " ", hl = "Normal" }
