@@ -1,19 +1,21 @@
 local M = {}
 local windows = {}
+local kinds = {}
 
 function M.close(tabpage)
   local win = windows[tabpage]
   windows[tabpage] = nil
+  kinds[tabpage] = nil
   if win and vim.api.nvim_win_is_valid(win) then
     vim.api.nvim_win_close(win, true)
   end
 end
 
-function M.is_open(tabpage)
-  return windows[tabpage] and vim.api.nvim_win_is_valid(windows[tabpage]) or false
+function M.is_open(tabpage, kind)
+  return windows[tabpage] and vim.api.nvim_win_is_valid(windows[tabpage]) and (not kind or kinds[tabpage] == kind) or false
 end
 
-function M.open(tabpage, summary, id, opts)
+function M.open(tabpage, summary, id, opts, kind)
   M.close(tabpage)
   local source_win = vim.api.nvim_get_current_win()
   local width = math.max(1, math.min(opts.max_width, vim.api.nvim_win_get_width(source_win) - 4, vim.o.columns - 4))
@@ -53,13 +55,14 @@ function M.open(tabpage, summary, id, opts)
     noautocmd = true,
   }
   if border ~= "none" and border ~= "" then
-    float.title = " Change " .. id .. " "
+    float.title = " Change " .. id .. " · " .. (kind == "why" and "Why" or "What") .. " "
     float.title_pos = "left"
   end
   local win = vim.api.nvim_open_win(buf, false, float)
   vim.wo[win].wrap = true
   vim.wo[win].winhighlight = "Normal:NormalFloat,FloatBorder:FloatBorder"
   windows[tabpage] = win
+  kinds[tabpage] = kind or "what"
   return win
 end
 

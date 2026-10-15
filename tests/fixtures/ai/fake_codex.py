@@ -25,7 +25,11 @@ def respond(request, result):
 
 def complete(thread_id, turn_id, payload):
     summaries = [
-        {"id": change["id"], "summary": "Change %s in %s. This explains its effect." % (change["id"], payload["file"])}
+        {
+            "id": change["id"],
+            "what": "Change %s in %s. This explains its effect." % (change["id"], payload["file"]),
+            "why": "Purpose of change %s in %s. This explains the broader goal." % (change["id"], payload["file"]),
+        }
         for change in payload["changes"]
     ]
     text = "invalid JSON" if scenario == "invalid" else json.dumps({"summaries": summaries})
@@ -64,6 +68,8 @@ for line in sys.stdin:
             sys.exit(7)
         turns += 1
         params = request["params"]
+        schema = params["outputSchema"]["properties"]["summaries"]["items"]
+        assert schema["required"] == ["id", "what", "why"]
         payload = json.loads(params["input"][0]["text"].split("\n\n", 1)[1])
         turn_id = "turn-" + str(turns)
         respond(request, {"turn": {"id": turn_id, "status": "inProgress"}})

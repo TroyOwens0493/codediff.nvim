@@ -636,8 +636,9 @@ require("codediff").setup({
   ai = {
     enabled = true,
     auto_summary = true,
-    keymap = "gs", -- Set false to supply your own mapping
-    detail = "detailed", -- Two or three sentences; "brief" uses one
+    keymap = "gs", -- What changed; false disables this mapping
+    why_keymap = "gb", -- Why it changed; false disables this mapping
+    detail = "detailed", -- Two or three sentences per summary; "brief" uses one
     popup = { border = "rounded", max_width = 72 },
   },
 })
@@ -647,30 +648,50 @@ Run `:CodeDiffAI login` to sign in with ChatGPT, or use your existing Codex
 ChatGPT login. CodeDiff uses a local `codex app-server` process; Codex stores
 and refreshes the credentials. Summaries use your ChatGPT plan's Codex allowance.
 
-When you select a file, CodeDiff sends its changed blocks and nearby code to
-Codex in the background. A spinner and `AI` appear beside the selected file in
+When you select a file, CodeDiff generates two summaries for each changed block
+in one background request:
+
+- **What** describes the change and its direct effect.
+- **Why** explains why this block also had to change as part of the full comparison.
+  It connects the block to related changes in other files and the overall goal.
+
+CodeDiff sends the changed blocks and nearby code from the selected file and the
+other files in the active comparison. It includes commit messages from the
+reviewed revision range when available. The context follows the Explorer's file
+list, file filters, and visible groups. In history views, it covers the selected
+commit comparison. Unsaved edits in loaded working files are included.
+The AI must mark inferred reasons as likely and state when the purpose is unknown.
+
+A spinner and `AI` appear beside the selected file in
 the Explorer while the request runs. The indicator disappears when the request
 finishes, fails, or is cancelled. Set `ai.loading_indicator = false` to hide it.
 Custom file formatters receive the indicator text in `ctx.ai_loading`.
-Move onto a changed block and press `gs` to show its
-summary. Press `gs` again, move the cursor, or leave the buffer to close it.
-Generation never opens a popup. The mapping applies to diff panes only; the
+Move onto a changed block and press `gs` for what changed, or `gb` for why.
+Press the other key to switch summaries. Press the same key again, move the
+cursor, or leave the buffer to close the popup.
+Generation never opens a popup. These mappings apply to diff panes only; the
 Explorer's existing `gs` mapping still toggles staged files.
 
+Use `:CodeDiffAI what` or `:CodeDiffAI why` to toggle either summary.
 Use `:CodeDiffAI status` to check sign-in and summary state, `:CodeDiffAI refresh`
 to retry or bypass the cache, and `:CodeDiffAI cancel` to stop the current request.
-The same comparison is cached in memory. Edits invalidate old results. Merge
-conflict views are not supported by this MVP. Files whose input exceeds
+The same comparison is cached in memory. Related file changes also invalidate
+the cache. Merge conflict views are not supported. Comparisons whose input exceeds
 `ai.max_input_bytes` (120,000 by default) are skipped with a message on request.
 
 Public Lua functions support custom mappings and statuslines:
 
 ```lua
-vim.keymap.set("n", "<leader>ga", require("codediff").toggle_summary)
+vim.keymap.set("n", "gs", require("codediff").toggle_what_summary)
+vim.keymap.set("n", "gb", require("codediff").toggle_why_summary)
 require("codediff").summarize({ force = true })
 require("codediff").ai_login()
 local state = require("codediff").ai_status() -- { status, count, error? }
 ```
+
+Set both `ai.keymap = false` and `ai.why_keymap = false` to supply your own mappings.
+`toggle_summary()` and `:CodeDiffAI toggle` continue to toggle the what summary.
+`ai_status().count` is the number of changed blocks, each with both summaries.
 
 Set `ai.auto_summary = false` to generate only through `summarize()` or
 `:CodeDiffAI refresh`. `ai.command` accepts an executable name or an argv list.
@@ -685,6 +706,12 @@ plugins, and delegation disabled.
 | Function | Description |
 |----------|-------------|
 | `setup(opts)` | Apply CodeDiff configuration |
+| `toggle_what_summary()` | Toggle what changed in the block under the cursor |
+| `toggle_why_summary()` | Toggle why the block changed in the full comparison |
+| `toggle_summary()` | Alias for `toggle_what_summary()` |
+| `summarize(opts)` | Generate both summaries; `opts.force` bypasses the cache |
+| `ai_status(tabpage?)` | Read summary state for a statusline or integration |
+| `ai_login()` | Sign in to ChatGPT through Codex |
 | `next_hunk()` | Move to the next hunk |
 | `prev_hunk()` | Move to the previous hunk |
 | `next_file()` | Move to the next file, or the next commit in single-file history |

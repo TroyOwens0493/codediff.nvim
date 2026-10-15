@@ -13,12 +13,22 @@ function M.setup(opts)
   end
 end
 
--- Toggle a floating summary for the changed block under the cursor.
+-- Toggle what changed for the block under the cursor (existing API).
 function M.toggle_summary()
-  return require("codediff.ai").toggle_summary()
+  return M.toggle_what_summary()
 end
 
--- Generate summaries for the current file. opts.force bypasses the cache.
+-- Toggle a floating description of what changed in the current block.
+function M.toggle_what_summary()
+  return require("codediff.ai").toggle_summary("what")
+end
+
+-- Toggle a floating explanation of the current block's broader purpose.
+function M.toggle_why_summary()
+  return require("codediff.ai").toggle_summary("why")
+end
+
+-- Generate both summaries for each change in the current file. opts.force bypasses the cache.
 function M.summarize(opts)
   return require("codediff.ai").summarize(nil, opts and opts.force)
 end

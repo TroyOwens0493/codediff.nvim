@@ -31,7 +31,10 @@ describe("AI Codex provider", function()
   it("uses managed ChatGPT auth and parses a fragmented JSONL summary", function()
     local err, result = run()
     assert.is_nil(err)
-    assert.equals("Change 1 in example.lua. This explains its effect.", result[1])
+    assert.same({
+      what = "Change 1 in example.lua. This explains its effect.",
+      why = "Purpose of change 1 in example.lua. This explains the broader goal.",
+    }, result[1])
   end)
 
   it("requires ChatGPT sign-in before sending code", function()

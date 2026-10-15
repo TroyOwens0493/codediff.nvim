@@ -22,6 +22,7 @@ for _, layout in ipairs({ "side-by-side", "inline" }) do
         local summarize = provider.summarize
         provider.summarize = function(...)
           refresh_test.summary_calls = refresh_test.summary_calls + 1
+          refresh_test.summary_payload = vim.json.decode((...).payload)
           return summarize(...)
         end
       ]])
@@ -182,6 +183,47 @@ for _, layout in ipairs({ "side-by-side", "inline" }) do
       h.assert_no_errors(screen)
     end)
 
+    it("switches between what and why for each hunk without another request", function()
+      h.open(screen, repo, "CodeDiff", "hunks.txt", "hunks.txt")
+      ready()
+      focus(1)
+      local source_win = screen:exec("return vim.api.nvim_get_current_win()")
+      h.feed(screen, "gs")
+      expect_popup("Change 1 in hunks.txt")
+      h.feed(screen, "gb")
+      expect_popup("Purpose of change 1 in hunks.txt")
+      assert.equals(source_win, screen:exec("return vim.api.nvim_get_current_win()"))
+      assert.equals(
+        1,
+        screen:exec([[
+        local count = 0
+        for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+          if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == 'codediff-summary' then
+            count = count + 1
+            assert(vim.api.nvim_win_get_config(win).title[1][1]:find('Why', 1, true))
+          end
+        end
+        return count
+      ]])
+      )
+      h.feed(screen, "gs")
+      expect_popup("Change 1 in hunks.txt")
+      h.feed(screen, "gb")
+      expect_popup("Purpose of change 1 in hunks.txt")
+      h.feed(screen, "gb")
+      screen:await(function()
+        return popup_text() == ""
+      end, "gb did not close the why popup")
+      focus(12)
+      h.feed(screen, "gb")
+      expect_popup("Purpose of change 2 in hunks.txt")
+      assert.equals(1, screen:exec("return refresh_test.summary_calls"))
+      h.feed(screen, "k")
+      screen:await(function()
+        return popup_text() == ""
+      end, "cursor movement did not close the why popup")
+    end)
+
     it("refreshes after edits and never opens a popup when generation completes", function()
       h.open(screen, repo, "CodeDiff", "a.txt")
       ready()
@@ -197,19 +239,24 @@ for _, layout in ipairs({ "side-by-side", "inline" }) do
     end)
 
     it("supports a custom mapping through the public Lua API", function()
-      screen:exec("require('codediff').setup({ ai = { keymap = false } })")
+      screen:exec("require('codediff').setup({ ai = { keymap = false, why_keymap = false } })")
       h.open(screen, repo, "CodeDiff", "a.txt")
       ready()
       focus(2)
       assert.is_false(screen:exec([[
         for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, 'n')) do
-          if map.lhs == 'gs' and map.desc == 'Toggle AI change summary' then return true end
+          if map.desc == 'Toggle AI what summary' or map.desc == 'Toggle AI why summary' then return true end
         end
         return false
       ]]))
-      screen:exec("vim.keymap.set('n', '<F8>', require('codediff').toggle_summary, { buffer = true })")
+      screen:exec([[
+        vim.keymap.set('n', '<F8>', require('codediff').toggle_what_summary, { buffer = true })
+        vim.keymap.set('n', '<F9>', require('codediff').toggle_why_summary, { buffer = true })
+      ]])
       h.feed(screen, "<F8>")
       expect_popup("Change 1 in a.txt")
+      h.feed(screen, "<F9>")
+      expect_popup("Purpose of change 1 in a.txt")
     end)
 
     it("reuses cached summaries when returning to the same comparison", function()
@@ -223,6 +270,8 @@ for _, layout in ipairs({ "side-by-side", "inline" }) do
       focus(2)
       h.feed(screen, "gs")
       expect_popup("Change 1 in a.txt")
+      h.feed(screen, "gb")
+      expect_popup("Purpose of change 1 in a.txt")
     end)
 
     it("keeps summaries ready when the same file is selected again", function()
@@ -234,6 +283,45 @@ for _, layout in ipairs({ "side-by-side", "inline" }) do
       focus(2)
       h.feed(screen, "gs")
       expect_popup("Change 1 in a.txt")
+    end)
+
+    it("regenerates when another file in the comparison changes", function()
+      h.open(screen, repo, "CodeDiff", "a.txt")
+      ready()
+      local before = screen:exec("return refresh_test.summary_calls")
+      repo.replace("b.txt", 2, "NEW_RELATED_CHANGE")
+      screen:await(function()
+        return screen:exec("return refresh_test.summary_calls") > before
+      end, "related file edit did not regenerate summaries")
+      ready()
+      local payload = screen:exec("return refresh_test.summary_payload")
+      assert.is_truthy(vim.json.encode(payload.comparison):find("NEW_RELATED_CHANGE", 1, true))
+      focus(2)
+      h.feed(screen, "gb")
+      expect_popup("Purpose of change 1 in a.txt")
+    end)
+
+    it("finishes collecting context when reads take longer than the refresh interval", function()
+      screen:exec([[
+        local comparison = require('codediff.ai.comparison')
+        local capture = comparison.capture
+        comparison.capture = function(...)
+          local args, cancelled, stop = { ... }, false, nil
+          vim.defer_fn(function()
+            if not cancelled then stop = capture(unpack(args)) end
+          end, 700)
+          return function()
+            cancelled = true
+            if stop then stop() end
+          end
+        end
+      ]])
+      h.open(screen, repo, "CodeDiff", "a.txt")
+      ready()
+      assert.equals(1, screen:exec("return refresh_test.summary_calls"))
+      focus(2)
+      h.feed(screen, "gb")
+      expect_popup("Purpose of change 1 in a.txt")
     end)
 
     it("can request summaries again after cancellation", function()
@@ -252,9 +340,12 @@ for _, layout in ipairs({ "side-by-side", "inline" }) do
       focus(2)
       h.feed(screen, "gs")
       expect_popup("Change 1 in a.txt")
+      h.feed(screen, "gb")
+      expect_popup("Purpose of change 1 in a.txt")
       screen:exec("require('codediff').setup({ ai = { enabled = false } })")
       assert.equals("", popup_text())
       assert.is_false(screen:exec("return require('codediff.ui.lifecycle').owns_keymap(vim.api.nvim_get_current_tabpage(), 'gs', 'n', vim.api.nvim_get_current_buf())"))
+      assert.is_false(screen:exec("return require('codediff.ui.lifecycle').owns_keymap(vim.api.nvim_get_current_tabpage(), 'gb', 'n', vim.api.nvim_get_current_buf())"))
     end)
 
     it("discards a late response after a file switch", function()

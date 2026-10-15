@@ -1,5 +1,6 @@
 local M = {}
 local context = require("codediff.ai.context")
+local comparison = require("codediff.ai.comparison")
 local provider = require("codediff.ai.provider")
 local popup = require("codediff.ai.popup")
 local progress = require("codediff.ai.progress")
@@ -28,6 +29,11 @@ end
 local function cancel(state)
   progress.stop(state.tabpage)
   state.generation = state.generation + 1
+  if state.cancel_context then
+    state.cancel_context()
+    state.cancel_context = nil
+  end
+  state.context_snapshot = nil
   if state.cancel then
     local stop = state.cancel
     state.cancel = nil
@@ -62,30 +68,19 @@ local function bind(tabpage, session)
   if not session.merge then
     for _, buf in ipairs({ session.original_bufnr, session.modified_bufnr }) do
       lifecycle.set_buf_keymap(tabpage, buf, "n", options().keymap, function()
-        M.toggle_summary()
-      end, { desc = "Toggle AI change summary", silent = true, nowait = true })
+        M.toggle_summary("what")
+      end, { desc = "Toggle AI what summary", silent = true, nowait = true })
+      lifecycle.set_buf_keymap(tabpage, buf, "n", options().why_keymap, function()
+        M.toggle_summary("why")
+      end, { desc = "Toggle AI why summary", silent = true, nowait = true })
     end
   end
   lifecycle.end_keymap_scope(tabpage, "ai")
 end
 
-function M.summarize(tabpage, force)
-  tabpage = tabpage or vim.api.nvim_get_current_tabpage()
+local function generate(tabpage, state, snapshot, force)
   local opts = options()
-  local session = session_for(tabpage)
-  if not opts.enabled or not session or session.suspended then
-    return false
-  end
-  local state = state_for(tabpage)
-  local snapshot, err = context.capture(session, opts)
-  if not snapshot then
-    cancel(state)
-    popup.close(tabpage)
-    state.snapshot, state.summaries = nil, nil
-    state.status, state.error = "error", err
-    return false
-  end
-  if not force and state.snapshot and state.snapshot.key == snapshot.key and (state.status == "ready" or state.status == "loading" or state.status == "error") then
+  if not force and state.snapshot and state.snapshot.key == snapshot.key and (state.status == "ready" or state.status == "loading" and state.cancel or state.status == "error") then
     state.snapshot = snapshot
     return state.status ~= "error"
   end
@@ -123,6 +118,64 @@ function M.summarize(tabpage, force)
   return true
 end
 
+function M.summarize(tabpage, force)
+  tabpage = tabpage or vim.api.nvim_get_current_tabpage()
+  local opts = options()
+  local session = session_for(tabpage)
+  if not opts.enabled or not session or session.suspended then
+    return false
+  end
+  local state = state_for(tabpage)
+  local snapshot, err = context.capture(session, opts)
+  if not snapshot then
+    cancel(state)
+    popup.close(tabpage)
+    state.snapshot, state.summaries = nil, nil
+    state.status, state.error = "error", err
+    return false
+  end
+  if state.cancel_context then
+    if not force and context.is_current(state.context_snapshot, session) then
+      return true
+    end
+    state.cancel_context()
+  end
+  -- Cancellation keeps completed results. Reuse them on request while checking
+  -- the wider comparison again, just as a ready popup does between refreshes.
+  if not force and state.status == "idle" and state.summaries and state.snapshot and context.is_current(state.snapshot, session) then
+    state.status = "ready"
+  end
+  if not state.snapshot or not context.is_current(state.snapshot, session) or state.status == "idle" then
+    cancel(state)
+    popup.close(tabpage)
+    state.snapshot, state.summaries, state.error = snapshot, nil, nil
+    state.status = "loading"
+    progress.start(tabpage, snapshot.file)
+  end
+  local generation = state.generation
+  state.context_snapshot = snapshot
+  state.cancel_context = comparison.capture(session, snapshot, opts, function(comparison_err, captured)
+    if states[tabpage] ~= state or state.generation ~= generation then
+      return
+    end
+    state.cancel_context = nil
+    state.context_snapshot = nil
+    if not context.is_current(captured, session_for(tabpage)) then
+      cancel(state)
+      state.status = "idle"
+      return
+    end
+    if comparison_err then
+      cancel(state)
+      popup.close(tabpage)
+      state.status, state.error, state.summaries = "error", comparison_err, nil
+      return
+    end
+    generate(tabpage, state, captured, force)
+  end)
+  return true
+end
+
 function M.on_diff_updated(tabpage)
   if not options().enabled then
     return
@@ -149,9 +202,11 @@ function M.on_diff_updated(tabpage)
   end
 end
 
-function M.toggle_summary()
+function M.toggle_summary(kind)
+  kind = kind or "what"
+  assert(kind == "what" or kind == "why", "Summary kind must be 'what' or 'why'")
   local tabpage = vim.api.nvim_get_current_tabpage()
-  if popup.is_open(tabpage) then
+  if popup.is_open(tabpage, kind) then
     popup.close(tabpage)
     return false
   end
@@ -194,7 +249,7 @@ function M.toggle_summary()
     local first = math.min(range.start_line, vim.api.nvim_buf_line_count(buf))
     local last = math.max(first, range.end_line - 1)
     if line >= first and line <= last then
-      popup.open(tabpage, state.summaries[id], id, options().popup)
+      popup.open(tabpage, state.summaries[id][kind], id, options().popup, kind)
       return true
     end
   end
@@ -242,8 +297,10 @@ function M.command(action)
     M.summarize(nil, true)
   elseif action == "cancel" then
     M.cancel()
+  elseif action == "why" then
+    M.toggle_summary("why")
   else
-    M.toggle_summary()
+    M.toggle_summary("what")
   end
 end
 
