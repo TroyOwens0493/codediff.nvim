@@ -677,7 +677,7 @@ Use `:CodeDiffAI status` to check sign-in and summary state, `:CodeDiffAI refres
 to retry or bypass the cache, and `:CodeDiffAI cancel` to stop the current request.
 The same comparison is cached in memory. Related file changes also invalidate
 the cache. Merge conflict views are not supported. Comparisons whose input exceeds
-`ai.max_input_bytes` (120,000 by default) are skipped with a message on request.
+`ai.max_input_bytes` (1,200,000 by default) are skipped with a message on request.
 
 Public Lua functions support custom mappings and statuslines:
 
