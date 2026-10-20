@@ -28,6 +28,11 @@ function M.toggle_why_summary()
   return require("codediff.ai").toggle_summary("why")
 end
 
+-- Explain the active Visual selection, or an explicit inclusive source range.
+function M.explain_selection(first, last)
+  return require("codediff.ai").explain(first, last)
+end
+
 -- Generate both summaries for each change in the current file. opts.force bypasses the cache.
 function M.summarize(opts)
   return require("codediff.ai").summarize(nil, opts and opts.force)

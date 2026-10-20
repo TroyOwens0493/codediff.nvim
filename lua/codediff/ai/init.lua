@@ -4,6 +4,7 @@ local comparison = require("codediff.ai.comparison")
 local provider = require("codediff.ai.provider")
 local popup = require("codediff.ai.popup")
 local progress = require("codediff.ai.progress")
+local explanation = require("codediff.ai.explanation")
 local states, cache, cache_order = {}, {}, {}
 local group
 
@@ -50,6 +51,7 @@ function M.cancel(tabpage)
     state.status = "idle"
   end
   popup.close(tabpage)
+  explanation.close(tabpage)
 end
 
 local function remember(key, summaries)
@@ -73,6 +75,9 @@ local function bind(tabpage, session)
       lifecycle.set_buf_keymap(tabpage, buf, "n", options().why_keymap, function()
         M.toggle_summary("why")
       end, { desc = "Toggle AI why summary", silent = true, nowait = true })
+      lifecycle.set_buf_keymap(tabpage, buf, "x", options().explain_keymap, function()
+        M.explain()
+      end, { desc = "Explain selected lines with AI", silent = true, nowait = true })
     end
   end
   lifecycle.end_keymap_scope(tabpage, "ai")
@@ -185,6 +190,7 @@ function M.on_diff_updated(tabpage)
     return
   end
   bind(tabpage, session)
+  explanation.invalidate(tabpage, session)
   local state = state_for(tabpage)
   state.schedule_generation = (state.schedule_generation or 0) + 1
   local generation = state.schedule_generation
@@ -200,6 +206,40 @@ function M.on_diff_updated(tabpage)
       end
     end, options().debounce_ms)
   end
+end
+
+function M.explain(first, last)
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local session = session_for(tabpage)
+  if not options().enabled then
+    notify("Enable ai.enabled in setup() first.")
+    return false
+  end
+  if not session or session.suspended then
+    notify("Open a CodeDiff view first.")
+    return false
+  end
+  local mode = vim.fn.mode()
+  local visual = mode == "v" or mode == "V" or mode == "\22"
+  if not first then
+    if not visual then
+      notify("Select code in a diff pane first, or use :<range>CodeDiffAI explain.")
+      return false
+    end
+    first, last = vim.fn.line("v"), vim.fn.line(".")
+  end
+  local snapshot, err = require("codediff.ai.selection").capture(session, vim.api.nvim_get_current_buf(), first, last or first, options())
+  if not snapshot then
+    notify(err, vim.log.levels.WARN)
+    return false
+  end
+  if visual then
+    -- Leave Visual mode before entering the result window. Keep register contents.
+    vim.cmd("normal! " .. string.char(27))
+  end
+  popup.close(tabpage)
+  explanation.open(tabpage, snapshot, options())
+  return true
 end
 
 function M.toggle_summary(kind)
@@ -280,8 +320,10 @@ function M.login()
   end)
 end
 
-function M.command(action)
-  if action == "login" then
+function M.command(action, first, last)
+  if action == "explain" then
+    M.explain(first, last)
+  elseif action == "login" then
     M.login()
   elseif action == "status" then
     provider.account(options(), function(err, account)
@@ -331,6 +373,7 @@ function M.setup()
     pattern = "CodeDiffFileSelect",
     callback = function(event)
       local existing = states[event.data.tabpage]
+      explanation.invalidate(event.data.tabpage, session_for(event.data.tabpage))
       if existing and existing.snapshot and existing.snapshot.file == event.data.path and context.is_current(existing.snapshot, session_for(event.data.tabpage)) then
         M.on_diff_updated(event.data.tabpage)
         return

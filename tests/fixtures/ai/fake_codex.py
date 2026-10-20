@@ -30,9 +30,16 @@ def complete(thread_id, turn_id, payload):
             "what": "Change %s in %s. This explains its effect." % (change["id"], payload["file"]),
             "why": "Purpose of change %s in %s. This explains the broader goal." % (change["id"], payload["file"]),
         }
-        for change in payload["changes"]
+        for change in payload.get("changes", [])
     ]
-    text = "invalid JSON" if scenario == "invalid" else json.dumps({"summaries": summaries})
+    output = {"summaries": summaries}
+    if "lines" in payload:
+        output = {"explanations": [
+            {"line": entry["line"], "explanation": "Explain %s in %s (%s): %s" % (
+                entry["line"], payload["file"], payload["side"], entry["text"])}
+            for entry in payload["lines"]
+        ]}
+    text = "invalid JSON" if scenario == "invalid" else json.dumps(output)
     send({"method": "item/completed", "params": {"threadId": thread_id, "item": {"type": "agentMessage", "text": text}}})
     turn = {"id": turn_id, "status": "completed", "items": []}
     if scenario in ("failed", "slow_failed"):
@@ -68,9 +75,10 @@ for line in sys.stdin:
             sys.exit(7)
         turns += 1
         params = request["params"]
-        schema = params["outputSchema"]["properties"]["summaries"]["items"]
-        assert schema["required"] == ["id", "what", "why"]
         payload = json.loads(params["input"][0]["text"].split("\n\n", 1)[1])
+        kind = "explanations" if "lines" in payload else "summaries"
+        schema = params["outputSchema"]["properties"][kind]["items"]
+        assert schema["required"] == (["line", "explanation"] if kind == "explanations" else ["id", "what", "why"])
         turn_id = "turn-" + str(turns)
         respond(request, {"turn": {"id": turn_id, "status": "inProgress"}})
         if scenario != "hang":

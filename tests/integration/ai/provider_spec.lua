@@ -43,6 +43,33 @@ describe("AI Codex provider", function()
     assert.is_truthy(err:find(":CodeDiffAI login", 1, true))
   end)
 
+  it("uses the same managed connection for selected line explanations", function()
+    local done, err, result
+    provider.explain(
+      {
+        first_line = 7,
+        last_line = 8,
+        payload = vim.json.encode({
+          file = "example.lua",
+          side = "original",
+          lines = {
+            { line = 7, text = "return value" },
+            { line = 8, text = "end" },
+          },
+        }),
+      },
+      opts,
+      function(failure, explanations)
+        done, err, result = true, failure, explanations
+      end
+    )
+    assert.is_true(vim.wait(3000, function()
+      return done
+    end, 5))
+    assert.is_nil(err)
+    assert.same({ "7: Explain 7 in example.lua (original): return value", "8: Explain 8 in example.lua (original): end" }, result)
+  end)
+
   it("reports a missing Codex executable", function()
     opts.command = "/codediff-test/no-such-codex"
     local err = run()

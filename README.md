@@ -638,6 +638,7 @@ require("codediff").setup({
     auto_summary = true,
     keymap = "gs", -- What changed; false disables this mapping
     why_keymap = "gb", -- Why it changed; false disables this mapping
+    explain_keymap = "<leader>ge", -- Explain selected lines; false disables this mapping
     detail = "detailed", -- Two or three sentences per summary; "brief" uses one
     popup = { border = "rounded", max_width = 72 },
   },
@@ -669,8 +670,26 @@ Custom file formatters receive the indicator text in `ctx.ai_loading`.
 Move onto a changed block and press `gs` for what changed, or `gb` for why.
 Press the other key to switch summaries. Press the same key again, move the
 cursor, or leave the buffer to close the popup.
-Generation never opens a popup. These mappings apply to diff panes only; the
+Background summary generation never opens a popup. These mappings apply to diff panes only; the
 Explorer's existing `gs` mapping still toggles staged files.
+
+To explain code, select lines in either diff pane with Visual mode and press
+`<leader>ge`. A window opens and shows one explanation for each source line:
+
+```text
+42: Read the file contents.
+43: Return the result.
+```
+
+Use the normal movement keys to scroll. Press `q` or `Esc` to close the window
+and cancel a pending request. Each request includes the selected lines and
+nearby code from that pane. Character and block selections include each full
+source line they touch. Unchanged lines can also be selected. In inline views,
+selectable lines come from the modified file; deleted virtual lines are not
+source buffer lines. Explanations use ASD-STE100 Simplified Technical English.
+Set `ai.explain_keymap` to change the shortcut, or set it to `false` to disable
+the mapping. You can also run `:'<,'>CodeDiffAI explain` after a selection, or
+`:42,43CodeDiffAI explain` for an explicit range.
 
 Use `:CodeDiffAI what` or `:CodeDiffAI why` to toggle either summary.
 Use `:CodeDiffAI status` to check sign-in and summary state, `:CodeDiffAI refresh`
@@ -684,6 +703,8 @@ Public Lua functions support custom mappings and statuslines:
 ```lua
 vim.keymap.set("n", "gs", require("codediff").toggle_what_summary)
 vim.keymap.set("n", "gb", require("codediff").toggle_why_summary)
+vim.keymap.set("x", "<leader>ge", require("codediff").explain_selection)
+require("codediff").explain_selection(42, 43) -- Inclusive source line range
 require("codediff").summarize({ force = true })
 require("codediff").ai_login()
 local state = require("codediff").ai_status() -- { status, count, error? }
@@ -693,8 +714,9 @@ Set both `ai.keymap = false` and `ai.why_keymap = false` to supply your own mapp
 `toggle_summary()` and `:CodeDiffAI toggle` continue to toggle the what summary.
 `ai_status().count` is the number of changed blocks, each with both summaries.
 
-Set `ai.auto_summary = false` to generate only through `summarize()` or
-`:CodeDiffAI refresh`. `ai.command` accepts an executable name or an argv list.
+Set `ai.auto_summary = false` to generate change summaries only through
+`summarize()` or `:CodeDiffAI refresh`. Selected line explanations remain
+available on request. `ai.command` accepts an executable name or an argv list.
 `ai.model` defaults to your configured Codex model. `ai.effort` defaults to
 `"low"`. Requests use an ephemeral, read-only thread with shell, MCP servers,
 plugins, and delegation disabled.
@@ -708,6 +730,7 @@ plugins, and delegation disabled.
 | `setup(opts)` | Apply CodeDiff configuration |
 | `toggle_what_summary()` | Toggle what changed in the block under the cursor |
 | `toggle_why_summary()` | Toggle why the block changed in the full comparison |
+| `explain_selection(first?, last?)` | Explain the Visual selection or an inclusive source line range |
 | `toggle_summary()` | Alias for `toggle_what_summary()` |
 | `summarize(opts)` | Generate both summaries; `opts.force` bypasses the cache |
 | `ai_status(tabpage?)` | Read summary state for a statusline or integration |

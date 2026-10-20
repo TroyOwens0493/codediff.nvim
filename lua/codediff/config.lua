@@ -9,6 +9,7 @@ M.defaults = {
     loading_indicator = true, -- Spinner beside the selected explorer file while generating
     keymap = "gs", -- Toggle what changed in diff panes; false disables this mapping
     why_keymap = "gb", -- Toggle why it changed in diff panes; false disables this mapping
+    explain_keymap = "<leader>ge", -- Explain selected lines in Visual mode; false disables this mapping
     command = "codex", -- Executable or argv list
     model = nil, -- Use the user's configured Codex model
     effort = "low",
