@@ -604,6 +604,66 @@ Advanced usage (internal modules):
 <
 
 ==============================================================================
+GUIDED REVIEW                                          *codediff-review*
+
+This fork can generate a guided review with the configured Codex connection.
+Enable ai.enabled, open a comparison, then run :CodeDiffReview start.
+The review opens a new tab named Guided Review. Stops appear on the left, a
+short summary split spans the top, and CodeDiff shows the selected stop's
+changes below. The original comparison stays open. No mappings are added.
+>
+  :CodeDiffReview start
+  :CodeDiffReview step 1
+  :CodeDiffReview next
+  :CodeDiffReview prev
+  :CodeDiffReview excerpt 2
+  :CodeDiffReview file 1
+  :CodeDiffReview seen
+  :CodeDiffReview unseen
+  :CodeDiffReview ask Why does this change?
+  :CodeDiffReview refresh
+  :CodeDiffReview cancel
+  :CodeDiffReview close
+<
+Move the cursor to a stop in the sidebar, or use the commands or Lua API to
+select it. The summary and read-only diff panes update together. A stop shows
+only its changed blocks, including related blocks from several files. Other
+changes in the same file are excluded. The first or saved stop is displayed
+automatically. Source line numbers remain visible beside the code. Generation
+does not take focus again when it finishes. Mark reviewed steps explicitly.
+Changed comparisons make the guide stale; use refresh to generate it again.
+Guides and progress are cached by comparison content. Merge conflict views are
+not supported. Follow-up answers use only the supplied comparison context.
+
+AI output uses ai.timeout_ms as an inactivity limit (default: 120000 ms).
+Each response event, including reasoning or partial answer text, restarts the
+timer. An active stream has no total duration limit. Setup and control requests
+use the separate ai.request_timeout_ms limit (default: 30000 ms).
+
+The public Lua API provides the same actions:
+>lua
+  local diff = require("codediff")
+  diff.review_start()                 -- { force = true } bypasses the cache
+  diff.review_select(1)
+  diff.review_next()
+  diff.review_prev()
+  diff.review_open_excerpt(2)
+  diff.review_open_file(1)
+  diff.review_mark_seen()             -- false clears the mark
+  diff.review_ask("Why does this change?")
+  local status = diff.review_status() -- status, position, count, seen, open
+  local steps = diff.review_steps()   -- copy with file paths and groups
+  diff.review_cancel()
+  diff.review_close()
+<
+Request and navigation functions return true when accepted, false otherwise.
+Generation, answers, and file selection finish asynchronously. Status values:
+idle, loading, ready, empty, stale, error, cancelled. Normal Neovim window
+commands can focus or scroll each pane. Closing a review split closes the review
+tab. review_status() includes tabpage and source_tabpage; either tab can be used
+with review_status(tabpage) or review_steps(tabpage).
+
+==============================================================================
 USER AUTOCMD EVENTS                                     *codediff-events*
 
 CodeDiff emits User autocmd events at key lifecycle points:
@@ -611,6 +671,7 @@ CodeDiff emits User autocmd events at key lifecycle points:
 *CodeDiffOpen*    Fired after the diff view is fully ready.
 *CodeDiffClose*   Fired before cleanup starts.
 *CodeDiffFileSelect*  Fired when a file is selected in explorer.
+*CodeDiffUpdated* Fired after a diff becomes ready or a refresh is published.
 
 All events pass a `data` table accessible via the autocmd callback's
 `args.data` field:
@@ -623,6 +684,9 @@ All events pass a `data` table accessible via the autocmd callback's
     `tabpage`   Tab page ID of the diff session.
     `path`      Relative file path selected.
     `status`    Git status code (e.g., "M", "A", "D").
+
+  CodeDiffUpdated:
+    `tabpage`   Tab page ID of the updated diff session.
 
 Example: Hide tabline while CodeDiff is open:
 >lua

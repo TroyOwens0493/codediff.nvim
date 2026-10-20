@@ -67,7 +67,7 @@ describe("AI Codex provider", function()
       return done
     end, 5))
     assert.is_nil(err)
-    assert.same({ "7: Explain 7 in example.lua (original): return value", "8: Explain 8 in example.lua (original): end" }, result)
+    assert.same({ "Explain 7 in example.lua (original): return value", "Explain 8 in example.lua (original): end" }, result)
   end)
 
   it("reports a missing Codex executable", function()
@@ -89,6 +89,28 @@ describe("AI Codex provider", function()
   it("times out an unfinished turn", function()
     opts.command[3] = "hang"
     opts.timeout_ms = 50
+    local err = run()
+    assert.is_truthy(err:find("timed out", 1, true))
+  end)
+
+  it("keeps waiting while reasoning and answer events arrive past the timeout", function()
+    opts.command[3] = "streaming"
+    opts.timeout_ms = 300
+    local err, result = run()
+    assert.is_nil(err)
+    assert.equals("Change 1 in example.lua. This explains its effect.", result[1].what)
+  end)
+
+  it("times out after a stream stops sending events", function()
+    opts.command[3] = "streamed_hang"
+    opts.timeout_ms = 300
+    local err = run()
+    assert.is_truthy(err:find("timed out", 1, true))
+  end)
+
+  it("does not extend the timeout for events from another thread", function()
+    opts.command[3] = "unrelated_stream"
+    opts.timeout_ms = 300
     local err = run()
     assert.is_truthy(err:find("timed out", 1, true))
   end)

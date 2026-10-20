@@ -123,6 +123,7 @@ function Controller:publish(data, redraw)
   if package.loaded["codediff.ai"] then
     require("codediff.ai").on_diff_updated(session.tabpage)
   end
+  vim.api.nvim_exec_autocmds("User", { pattern = "CodeDiffUpdated", modeline = false, data = { tabpage = session.tabpage } })
 end
 
 function Controller:run()
@@ -391,6 +392,7 @@ function M.ready(tabpage)
     end
     self.last = inputs.capture(session)
     self.blocked = nil
+    vim.api.nvim_exec_autocmds("User", { pattern = "CodeDiffUpdated", modeline = false, data = { tabpage = tabpage } })
     if next(self.pending) or #self.callbacks > 0 then
       self:schedule()
     end

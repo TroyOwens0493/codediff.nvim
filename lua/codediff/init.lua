@@ -11,6 +11,57 @@ function M.setup(opts)
   if config.options.ai.enabled or package.loaded["codediff.ai"] then
     require("codediff.ai").setup()
   end
+  if package.loaded["codediff.review"] then
+    require("codediff.review").setup()
+  end
+end
+
+function M.review_start(opts)
+  return require("codediff.review").start(opts)
+end
+
+function M.review_status(tabpage)
+  return require("codediff.review").status(tabpage)
+end
+
+function M.review_steps(tabpage)
+  return require("codediff.review").steps(tabpage)
+end
+
+function M.review_select(index)
+  return require("codediff.review").select(index)
+end
+
+function M.review_next()
+  return require("codediff.review").step(1)
+end
+
+function M.review_prev()
+  return require("codediff.review").step(-1)
+end
+
+function M.review_open_excerpt(index)
+  return require("codediff.review").open_excerpt(index)
+end
+
+function M.review_open_file(index)
+  return require("codediff.review").open_file(index)
+end
+
+function M.review_mark_seen(value)
+  return require("codediff.review").mark_seen(value)
+end
+
+function M.review_ask(question)
+  return require("codediff.review").ask(question)
+end
+
+function M.review_cancel()
+  return require("codediff.review").cancel()
+end
+
+function M.review_close()
+  return require("codediff.review").close()
 end
 
 -- Toggle what changed for the block under the cursor (existing API).

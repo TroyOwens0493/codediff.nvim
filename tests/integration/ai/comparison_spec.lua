@@ -157,4 +157,48 @@ describe("AI whole comparison context", function()
     vim.wait(30)
     assert.is_false(called)
   end)
+
+  local function review_capture()
+    local done, err, result
+    require("codediff.review.source").capture(session, opts, function(failure, value)
+      done, err, result = true, failure, value
+    end)
+    assert.is_true(vim.wait(3000, function()
+      return done
+    end, 5))
+    assert.is_nil(err)
+    return result
+  end
+
+  it("keeps the review identity across file selection but changes it for a different comparison", function()
+    vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, { "new A" })
+    local first = review_capture()
+    session.modified.relative = "b.lua"
+    session.panel.data.current_selection.path = "b.lua"
+    vim.api.nvim_buf_set_lines(session.original_bufnr, 0, -1, false, { "old B" })
+    vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, { "new B" })
+    assert.equals(first.key, review_capture().key)
+    session.panel.data.base_revision = target
+    assert.is_true(first.key ~= review_capture().key)
+  end)
+
+  it("distinguishes staged and unstaged occurrences of the same review file", function()
+    session.panel.data.base_revision, session.panel.data.target_revision = nil, nil
+    session.modified_revision = nil
+    repo.write_file("a.lua", { "staged A" })
+    repo.command({ "add", "a.lua" })
+    repo.write_file("a.lua", { "working A" })
+    session.panel.data.status_result = {
+      staged = { { path = "a.lua", status = "M" } },
+      unstaged = { { path = "a.lua", status = "M" } },
+    }
+    vim.api.nvim_buf_set_lines(session.original_bufnr, 0, -1, false, { "staged A" })
+    vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, { "working A" })
+    local snapshot = review_capture()
+    assert.equals(2, #snapshot.files)
+    assert.equals("unstaged", snapshot.files[1].group)
+    assert.equals("staged", snapshot.files[2].group)
+    assert.same({ "new A" }, snapshot.files[2].changes[1].original.lines)
+    assert.same({ "staged A" }, snapshot.files[2].changes[1].modified.lines)
+  end)
 end)

@@ -4,7 +4,7 @@ local context = require("codediff.ai.context")
 local inputs = require("codediff.ui.refresh.inputs")
 local panels = require("codediff.ui.refresh.panel")
 
-local function entries_for(session)
+function M.entries(session)
   local entries = {}
   local panel = session.panel
   if not panel then
@@ -34,7 +34,7 @@ end
 function M.capture(session, snapshot, opts, done)
   local cancelled = false
   local comparison = { files = {}, commit_messages = "" }
-  local entries = entries_for(session)
+  local entries = M.entries(session)
   if not session.panel then
     comparison.files[1] = { file = snapshot.file, changes = snapshot.changes }
   end
@@ -55,6 +55,7 @@ function M.capture(session, snapshot, opts, done)
         snapshot.payload = encoded
         snapshot.key = vim.fn.sha256(snapshot.key .. encoded)
         snapshot.comparison_ticks = ticks
+        snapshot.comparison = comparison
       end
     end
     done(err, snapshot)
@@ -114,11 +115,11 @@ function M.capture(session, snapshot, opts, done)
     -- The selected block's exact buffer contents are already in snapshot.changes.
     -- Use the same contents here, including unsaved edits and empty deleted sides.
     if file.path == snapshot.file and file.group == (session.panel.data.current_selection or {}).group then
-      comparison.files[#comparison.files + 1] = { file = file.path, group = file.group, changes = snapshot.changes }
+      comparison.files[#comparison.files + 1] = { file = file.path, group = file.group, status = file.status, changes = snapshot.changes }
       vim.schedule(next_file)
       return
     end
-    inputs.read(config, {}, nil, function(err, data)
+    inputs.read(config, { full = opts.refresh_inputs == true }, nil, function(err, data)
       vim.schedule(function()
         if cancelled then
           return
@@ -135,7 +136,7 @@ function M.capture(session, snapshot, opts, done)
         for buf, tick in pairs(data.ticks) do
           ticks[buf] = tick
         end
-        comparison.files[#comparison.files + 1] = { file = file.path, group = file.group, changes = changes }
+        comparison.files[#comparison.files + 1] = { file = file.path, group = file.group, status = file.status, changes = changes }
         if #vim.json.encode(comparison) > opts.max_input_bytes then
           finish("This comparison is too large for AI summaries (limit: " .. opts.max_input_bytes .. " bytes).")
           return

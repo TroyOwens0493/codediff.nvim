@@ -52,3 +52,18 @@ end, {
   end,
   desc = "ChatGPT sign-in, AI change summaries, and selected line explanations",
 })
+
+vim.api.nvim_create_user_command("CodeDiffReview", function(opts)
+  require("codediff.review").command(opts.fargs)
+end, {
+  nargs = "*",
+  complete = function(lead, line)
+    if #vim.split(line, "%s+") > 2 then
+      return {}
+    end
+    return vim.tbl_filter(function(action)
+      return action:sub(1, #lead) == lead
+    end, { "start", "refresh", "next", "prev", "step", "excerpt", "file", "seen", "unseen", "ask", "status", "cancel", "close" })
+  end,
+  desc = "Generate and navigate an AI-guided review of the comparison",
+})

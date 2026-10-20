@@ -2,6 +2,7 @@
 import json
 import sys
 import threading
+import time
 
 scenario = sys.argv[1]
 lock = threading.Lock()
@@ -39,12 +40,45 @@ def complete(thread_id, turn_id, payload):
                 entry["line"], payload["file"], payload["side"], entry["text"])}
             for entry in payload["lines"]
         ]}
+    if payload.get("review_kind") == "guide":
+        steps = []
+        for file in payload["files"]:
+            excerpts = []
+            if file["changes"]:
+                change = file["changes"][0]
+                side = "modified" if change["modified"]["lines"] else "original"
+                start = change[side]["start_line"]
+                excerpts = [{"file_id": file["id"], "change_id": change["id"],
+                             "side": side, "start_line": start, "end_line": start,
+                             "caption": "Actual changed code"}]
+            steps.append({"title": "Review " + file["file"],
+                          "summary": "Explain the change in " + file["file"],
+                          "attention": "Check the intended behavior.",
+                          "excerpts": excerpts, "files": [] if excerpts else [file["id"]],
+                          "notes": ([{"excerpt": 1, "line": excerpts[0]["start_line"],
+                                      "text": "This connects to the next component."}] if excerpts else []),
+                          "questions": ["Why does this change?"]})
+        output = {"steps": steps}
+        if scenario == "bad_guide":
+            output["steps"][0]["excerpts"][0]["file_id"] = 999
+    if "question" in payload:
+        output = {"answer": "Based on the supplied diff: " + payload["question"]}
     text = "invalid JSON" if scenario == "invalid" else json.dumps(output)
     send({"method": "item/completed", "params": {"threadId": thread_id, "item": {"type": "agentMessage", "text": text}}})
     turn = {"id": turn_id, "status": "completed", "items": []}
     if scenario in ("failed", "slow_failed"):
         turn.update(status="failed", error={"message": "Usage limit reached"})
     send({"method": "turn/completed", "params": {"threadId": thread_id, "turn": turn}})
+
+
+def stream(thread_id, turn_id, payload):
+    for index in range(8):
+        time.sleep(0.1)
+        send({"method": ("item/reasoning/textDelta" if index < 4 else "item/agentMessage/delta"),
+              "params": {"threadId": "unrelated-thread" if scenario == "unrelated_stream" else thread_id,
+                         "turnId": turn_id, "itemId": "item-1", "delta": "partial text"}})
+    if scenario == "streaming":
+        complete(thread_id, turn_id, payload)
 
 
 for line in sys.stdin:
@@ -76,12 +110,20 @@ for line in sys.stdin:
         turns += 1
         params = request["params"]
         payload = json.loads(params["input"][0]["text"].split("\n\n", 1)[1])
-        kind = "explanations" if "lines" in payload else "summaries"
-        schema = params["outputSchema"]["properties"][kind]["items"]
-        assert schema["required"] == (["line", "explanation"] if kind == "explanations" else ["id", "what", "why"])
+        if "question" in payload:
+            assert params["outputSchema"]["required"] == ["answer"]
+        elif payload.get("review_kind") == "guide":
+            assert "steps" in params["outputSchema"]["properties"]
+        else:
+            kind = "explanations" if "lines" in payload else "summaries"
+            schema = params["outputSchema"]["properties"][kind]["items"]
+            assert schema["required"] == (["line", "explanation"] if kind == "explanations" else ["id", "what", "why"])
         turn_id = "turn-" + str(turns)
         respond(request, {"turn": {"id": turn_id, "status": "inProgress"}})
-        if scenario != "hang":
+        if scenario in ("streaming", "streamed_hang", "unrelated_stream"):
+            worker = threading.Thread(target=stream, args=(params["threadId"], turn_id, payload), daemon=True)
+            worker.start()
+        elif scenario != "hang":
             delay = 0.35 if scenario in ("slow", "slow_failed") else 0.01
             timer = threading.Timer(delay, complete, (params["threadId"], turn_id, payload))
             timer.daemon = True

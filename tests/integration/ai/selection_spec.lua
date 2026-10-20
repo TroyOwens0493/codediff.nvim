@@ -31,6 +31,9 @@ describe("AI selected line context", function()
     assert.equals("modified", payload.side)
     assert.equals("WORKING", payload.revision)
     assert.same({ { line = 2, text = "new" }, { line = 3, text = "" } }, payload.lines)
+    assert.same(payload.lines, snapshot.lines)
+    assert.equals(vim.bo[session.modified_bufnr].tabstop, snapshot.tabstop)
+    assert.equals(vim.bo[session.modified_bufnr].filetype, snapshot.filetype)
     assert.equals(1, payload.context_start_line)
     assert.same({ "before", "new", "", "after" }, payload.context)
     assert.is_truthy(selection.prompt(snapshot):find("ASD-STE100", 1, true))
@@ -76,7 +79,7 @@ describe("AI selected line context", function()
       } }),
       snapshot
     ))
-    assert.same({ "2: Read the value.", "3: Blank line." }, result)
+    assert.same({ "Read the value.", "Blank line." }, result)
   end)
 
   it("rejects missing, duplicate, noninteger, unselected, and empty explanations", function()

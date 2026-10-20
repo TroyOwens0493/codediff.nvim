@@ -17,8 +17,8 @@ M.defaults = {
     context_lines = 6,
     max_input_bytes = 1200000,
     debounce_ms = 350,
-    request_timeout_ms = 30000,
-    timeout_ms = 120000,
+    request_timeout_ms = 30000, -- Timeout for each setup or control request
+    timeout_ms = 120000, -- Maximum inactivity during AI output; response events restart this timer
     cache_size = 32, -- In-memory file comparisons; cleared when Neovim exits
     popup = { border = "rounded", max_width = 72 },
   },

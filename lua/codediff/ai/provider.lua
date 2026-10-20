@@ -69,6 +69,7 @@ end
 
 local function request(snapshot, opts, format, callback)
   local cancelled, finished, connection, thread_id, turn_id, remove_listener, timer
+  local timeout_generation = 0
   local text = ""
   local function release()
     if thread_id and connection then
@@ -96,6 +97,22 @@ local function request(snapshot, opts, format, callback)
     if thread_id and turn_id and connection then
       connection:request("turn/interrupt", { threadId = thread_id, turnId = turn_id }, function() end)
     end
+  end
+  local function reset_timeout()
+    timeout_generation = timeout_generation + 1
+    local generation = timeout_generation
+    timer:start(
+      opts.timeout_ms,
+      0,
+      vim.schedule_wrap(function()
+        -- A response event may have restarted the timer after this callback was queued.
+        if finished or generation ~= timeout_generation then
+          return
+        end
+        interrupt()
+        finish("AI request timed out. Try again.")
+      end)
+    )
   end
   connect(opts, function(err, ready)
     if finished then
@@ -171,10 +188,15 @@ local function request(snapshot, opts, format, callback)
             release()
             return
           end
+          timer = (vim.uv or vim.loop).new_timer()
           remove_listener = connection:listen(function(method, params)
+            if finished then
+              return
+            end
             if method == "client/stopped" then
               finish(params.error)
             elseif params.threadId == thread_id then
+              reset_timeout()
               if method == "item/completed" and params.item and params.item.type == "agentMessage" then
                 text = params.item.text or text
               elseif method == "turn/completed" then
@@ -187,15 +209,7 @@ local function request(snapshot, opts, format, callback)
               end
             end
           end)
-          timer = (vim.uv or vim.loop).new_timer()
-          timer:start(
-            opts.timeout_ms,
-            0,
-            vim.schedule_wrap(function()
-              interrupt()
-              finish("AI request timed out. Try again.")
-            end)
-          )
+          reset_timeout()
           connection:request("turn/start", {
             threadId = thread_id,
             effort = opts.effort,
@@ -228,6 +242,14 @@ end
 
 function M.explain(snapshot, opts, callback)
   return request(snapshot, opts, require("codediff.ai.selection"), callback)
+end
+
+function M.review(snapshot, opts, callback)
+  return request(snapshot, opts, require("codediff.review.format"), callback)
+end
+
+function M.review_answer(snapshot, opts, callback)
+  return request(snapshot, opts, require("codediff.review.answer"), callback)
 end
 
 return M

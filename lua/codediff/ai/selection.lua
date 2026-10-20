@@ -37,6 +37,9 @@ function M.capture(session, buf, first, last, opts)
   end
   return {
     file = file,
+    lines = lines,
+    filetype = vim.bo[buf].filetype,
+    tabstop = vim.bo[buf].tabstop,
     first_line = first,
     last_line = last,
     payload = payload,
@@ -110,7 +113,7 @@ function M.decode(text, snapshot)
     if explanation == "" then
       return nil, invalid
     end
-    result[index] = entry.line .. ": " .. explanation
+    result[index] = explanation
   end
   return result
 end
