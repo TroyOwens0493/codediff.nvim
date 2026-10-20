@@ -151,6 +151,64 @@ for _, layout in ipairs({ "side-by-side", "inline" }) do
       h.assert_no_errors(screen)
     end)
 
+    it("renders source syntax colors in the guided code pane", function()
+      repo.replace("sample.lua", 1, "local value = 'working'")
+      screen:exec("vim.api.nvim_set_hl(0, '@keyword.lua', { fg = 0xff3366 })")
+      start()
+      screen:exec([[
+        for index, step in ipairs(require('codediff').review_steps()) do
+          if step.title == 'Review sample.lua' then
+            assert(require('codediff').review_select(index))
+            return
+          end
+        end
+        error('No Lua review step')
+      ]])
+      screen:await(function()
+        return changes():find("local value = 'working'", 1, true) ~= nil
+      end, "Lua stop did not appear")
+      screen:flush()
+      local position = screen:exec([[
+        for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+          local buf = vim.api.nvim_win_get_buf(win)
+          if vim.api.nvim_buf_get_name(buf):match('/modified$') then
+            for row, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+              if line == "local value = 'working'" then return vim.fn.screenpos(win, row, 1) end
+            end
+          end
+        end
+      ]])
+      assert.equals("local", screen:text(position.row, position.col, 5))
+      assert.equals(0xff3366, screen:foreground(position.row, position.col))
+      screen:exec([[
+        vim.api.nvim_set_hl(0, '@keyword.lua', { fg = 0x33ff66 })
+        vim.api.nvim_exec_autocmds('ColorScheme', { pattern = 'review-test' })
+      ]])
+      screen:flush()
+      assert.equals(0x33ff66, screen:foreground(position.row, position.col))
+      if layout == "inline" then
+        assert.is_true(screen:exec([[
+          for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+            local buf = vim.api.nvim_win_get_buf(win)
+            if vim.api.nvim_buf_get_name(buf):match('/modified$') then
+              local ns = require('codediff.ui.inline').ns_inline
+              for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+                for _, chunks in ipairs(mark[4].virt_lines or {}) do
+                  for _, chunk in ipairs(chunks) do
+                    if chunk[1] == 'local' and vim.api.nvim_get_hl(0, { name = chunk[2], link = false }).fg == 0x33ff66 then
+                      return true
+                    end
+                  end
+                end
+              end
+            end
+          end
+          return false
+        ]]))
+      end
+      h.assert_no_errors(screen)
+    end)
+
     it("saves progress across closing and reopening, and exposes independent copies", function()
       start()
       screen:command("CodeDiffReview step 2")

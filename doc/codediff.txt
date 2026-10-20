@@ -672,6 +672,8 @@ CodeDiff emits User autocmd events at key lifecycle points:
 *CodeDiffClose*   Fired before cleanup starts.
 *CodeDiffFileSelect*  Fired when a file is selected in explorer.
 *CodeDiffUpdated* Fired after a diff becomes ready or a refresh is published.
+*CodeDiffReviewFileSelect* Fired when the active guided review file changes.
+*CodeDiffReviewClose* Fired after a guided review closes.
 
 All events pass a `data` table accessible via the autocmd callback's
 `args.data` field:
@@ -687,6 +689,18 @@ All events pass a `data` table accessible via the autocmd callback's
 
   CodeDiffUpdated:
     `tabpage`   Tab page ID of the updated diff session.
+
+  CodeDiffReviewFileSelect / CodeDiffReviewClose:
+    `tabpage`        Tab page ID of the guided review.
+    `source_tabpage` Tab page ID of its original comparison.
+
+  CodeDiffReviewFileSelect also includes:
+    `path`     Relative path of the active file; absent for a stop with no code.
+    `group`    Staged/unstaged group, when available.
+
+Review file selection follows navigation commands and the cursor in code panes.
+Use these events to select a theme by language, including while the sidebar or
+summary has focus.
 
 Example: Hide tabline while CodeDiff is open:
 >lua

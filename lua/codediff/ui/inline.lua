@@ -379,7 +379,7 @@ end
 -- @param diff_result table: The diff result from core/diff.compute_diff
 -- @param original_lines string[]: Lines from the original (reference) content
 -- @param modified_lines string[]: Lines from the modified buffer
--- @param opts? table: { filetype?: string } for syntax highlighting on virt_lines
+-- @param opts? table: { filetype?: string, syntax_highlights?: table } for syntax highlighting on virt_lines
 function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines, opts)
   -- Clear previous inline decorations
   vim.api.nvim_buf_clear_namespace(bufnr, M.ns_inline, 0, -1)
@@ -393,7 +393,7 @@ function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines
 
   -- Compute syntax highlights for original lines (for virt_line coloring)
   local filetype = opts and opts.filetype or (vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].filetype or nil)
-  local syntax_hls = M.compute_syntax_highlights(original_lines, filetype)
+  local syntax_hls = opts and opts.syntax_highlights or M.compute_syntax_highlights(original_lines, filetype)
 
   local buf_line_count = vim.api.nvim_buf_line_count(bufnr)
   local highlight_priority = config.options.diff.highlight_priority

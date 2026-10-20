@@ -54,6 +54,20 @@ local function write(buf, lines)
   vim.bo[buf].modifiable = false
 end
 
+local function select_file(state, file_id)
+  local file = file_id and state.snapshot.files[file_id]
+  local path = file and file.file
+  if state.active_path == path then
+    return
+  end
+  state.active_path = path
+  vim.api.nvim_exec_autocmds("User", {
+    pattern = "CodeDiffReviewFileSelect",
+    modeline = false,
+    data = { tabpage = state.review_tabpage, source_tabpage = state.tabpage, path = path, group = file and file.group },
+  })
+end
+
 function M.close(state)
   local tab = state.review_tabpage
   state.review_tabpage = nil
@@ -72,7 +86,11 @@ function M.close(state)
   end
   state.view_buffers, state.view_windows, state.display = nil, nil, nil
   state.display_position, state.display_key = nil, nil
+  state.active_path = nil
   M.restore_tabline()
+  if tab then
+    vim.api.nvim_exec_autocmds("User", { pattern = "CodeDiffReviewClose", modeline = false, data = { tabpage = tab, source_tabpage = state.tabpage } })
+  end
 end
 
 function M.open(state)
@@ -148,8 +166,39 @@ function M.open(state)
   for _, win in pairs(wins) do
     owned[tostring(win)] = true
   end
+  local group = vim.api.nvim_create_augroup("CodeDiffReviewWindows" .. tab, { clear = true })
+  for _, side in ipairs({ "original", "modified" }) do
+    if wins[side] then
+      vim.api.nvim_create_autocmd({ "CursorMoved", "BufEnter" }, {
+        group = group,
+        buffer = bufs[side],
+        callback = function()
+          if state.rendering or state.status ~= "ready" or not state.display then
+            return
+          end
+          local row = vim.api.nvim_win_get_cursor(wins[side])[1]
+          local location = state.display.locations[side][row]
+          if location then
+            select_file(state, location.file_id)
+          end
+        end,
+      })
+    end
+  end
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = group,
+    callback = function()
+      -- Themes update diff groups in their own ColorScheme handlers first.
+      vim.schedule(function()
+        local display = state.display
+        if state.review_tabpage == tab and state.layout == "inline" and display and display.diff then
+          require("codediff.ui.inline").render_inline_diff(bufs.modified, display.diff, display.original, display.modified, { syntax_highlights = display.syntax.original })
+        end
+      end)
+    end,
+  })
   vim.api.nvim_create_autocmd("WinClosed", {
-    group = vim.api.nvim_create_augroup("CodeDiffReviewWindows" .. tab, { clear = true }),
+    group = group,
     callback = function(event)
       if not owned[event.match] then
         return
@@ -207,7 +256,10 @@ function M.render(state)
     summary[#summary + 1] = "Answer is loading…"
   end
   write(bufs.summary, summary)
+  local syntax = require("codediff.review.syntax")
   if state.status ~= "ready" then
+    syntax.apply(bufs.original)
+    syntax.apply(bufs.modified)
     write(bufs.original, { "No current stop to display." })
     write(bufs.modified, { "No current stop to display." })
     require("codediff.ui.core").render_diff(bufs.original, bufs.modified, {}, {}, { changes = {} })
@@ -222,9 +274,13 @@ function M.render(state)
     for _, side in ipairs({ "original", "modified" }) do
       vim.b[bufs[side]].codediff_review_locations = display.locations[side]
     end
+    local tokens = syntax.compute(display)
+    display.syntax = tokens
+    syntax.apply(bufs.original, tokens.original)
+    syntax.apply(bufs.modified, tokens.modified)
     local render = require("codediff.ui.view.render")
     if state.layout == "inline" then
-      render.render_diff(bufs.original, bufs.modified, display.original, display.modified, "inline")
+      display.diff = render.render_diff(bufs.original, bufs.modified, display.original, display.modified, "inline", { syntax_highlights = tokens.original })
     else
       vim.api.nvim_win_call(wins.modified, function()
         render.compute_and_render(bufs.original, bufs.modified, display.original, display.modified, true, true, wins.original, wins.modified, false)
@@ -235,6 +291,7 @@ function M.render(state)
         vim.api.nvim_win_set_cursor(win, { 1, 0 })
       end
     end
+    select_file(state, display.blocks[1] and display.blocks[1].file_id)
   end
   state.rendering = false
 end
@@ -267,6 +324,7 @@ function M.jump(state, file_id, excerpt)
   vim.api.nvim_win_call(win, function()
     vim.cmd("normal! zz")
   end)
+  select_file(state, file_id)
   return true
 end
 

@@ -848,8 +848,15 @@ CodeDiff emits `User` autocmd events for view lifecycle changes:
 | `CodeDiffClose` | Before cleanup starts | `tabpage`, `mode` |
 | `CodeDiffFileSelect` | When a file is selected in the Explorer | `tabpage`, `path`, `status` |
 | `CodeDiffUpdated` | After a diff becomes ready or a refresh is published | `tabpage` |
+| `CodeDiffReviewFileSelect` | When the active file changes in a guided review | `tabpage`, `source_tabpage`, `path`, `group?` |
+| `CodeDiffReviewClose` | After a guided review closes | `tabpage`, `source_tabpage` |
 
 `mode` is one of `"explorer"`, `"standalone"`, or `"history"`.
+
+Review events use the review tab's `tabpage` and the original comparison's
+`source_tabpage`. File selection follows review commands and the cursor in code
+panes. `path` is absent for a stop with no code. These events can select a theme
+by language while the sidebar or summary has focus.
 
 <details>
 <summary>Example: Disable cursorline in the CodeDiff tab</summary>

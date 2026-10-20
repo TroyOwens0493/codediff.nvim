@@ -64,14 +64,14 @@ function M.diff_options()
 end
 
 -- Initial opens and data updates share computation and decoration rendering.
-function M.render_diff(original_buf, modified_buf, original_lines, modified_lines, layout)
+function M.render_diff(original_buf, modified_buf, original_lines, modified_lines, layout, opts)
   local result = diff_module.compute_diff(original_lines, modified_lines, M.diff_options())
   if not result then
     vim.notify("Failed to compute diff", vim.log.levels.ERROR)
     return
   end
   if layout == "inline" then
-    require("codediff.ui.inline").render_inline_diff(modified_buf, result, original_lines, modified_lines)
+    require("codediff.ui.inline").render_inline_diff(modified_buf, result, original_lines, modified_lines, opts)
   else
     core.render_diff(original_buf, modified_buf, original_lines, modified_lines, result)
   end
